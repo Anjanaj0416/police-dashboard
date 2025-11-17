@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Shield, Building, Phone, MapPin, ArrowLeft } from 'lucide-react';
+import { Shield, Building, Phone, MapPin, ArrowLeft, CheckCircle, AlertCircle, Info } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { validatePhone, validateGoogleMapsLink } from '../utils/helpers';
+import { validatePhone, getGoogleMapsLinkFeedback, extractCoordinatesFromLink } from '../utils/helpers';
 
 const RegisterPage = () => {
   const [formData, setFormData] = useState({
@@ -12,9 +12,21 @@ const RegisterPage = () => {
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [linkFeedback, setLinkFeedback] = useState(null);
+  const [showExamples, setShowExamples] = useState(false);
   
   const navigate = useNavigate();
   const { register } = useAuth();
+
+  // Real-time validation for Google Maps link
+  useEffect(() => {
+    if (formData.googleMapsLink) {
+      const feedback = getGoogleMapsLinkFeedback(formData.googleMapsLink);
+      setLinkFeedback(feedback);
+    } else {
+      setLinkFeedback(null);
+    }
+  }, [formData.googleMapsLink]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -39,11 +51,13 @@ const RegisterPage = () => {
     }
 
     if (!validatePhone(formData.phone)) {
-      newErrors.phone = 'Please enter a valid phone number';
+      newErrors.phone = 'Please enter a valid phone number (e.g., 0771234567)';
     }
 
-    if (!validateGoogleMapsLink(formData.googleMapsLink)) {
-      newErrors.googleMapsLink = 'Please enter a valid Google Maps link';
+    // Use the improved validation
+    const mapsFeedback = getGoogleMapsLinkFeedback(formData.googleMapsLink);
+    if (!mapsFeedback.isValid) {
+      newErrors.googleMapsLink = mapsFeedback.message;
     }
 
     setErrors(newErrors);
@@ -57,9 +71,28 @@ const RegisterPage = () => {
       return;
     }
 
+    // IMPORTANT FIX: Extract coordinates and send them with the form data
+    const coordinates = extractCoordinatesFromLink(formData.googleMapsLink);
+    
+    if (!coordinates || !coordinates.lat || !coordinates.lng) {
+      setErrors({
+        googleMapsLink: 'Could not extract coordinates from the link. Please try a different format.'
+      });
+      return;
+    }
+
+    // Create submission data with coordinates
+    const submissionData = {
+      ...formData,
+      lat: coordinates.lat,
+      lng: coordinates.lng
+    };
+
+    console.log('Submitting with coordinates:', submissionData);
+
     setLoading(true);
     try {
-      const success = await register(formData);
+      const success = await register(submissionData);
       if (success) {
         navigate('/login');
       }
@@ -70,9 +103,42 @@ const RegisterPage = () => {
     }
   };
 
+  const exampleLinks = [
+    'https://maps.app.goo.gl/TqJ2RSVYXYoeHSN9',
+    'https://www.google.com/maps/place/Police+Station+Ganemulla/@7.0675882,79.9597962,17z',
+  ];
+
+  const getFeedbackIcon = () => {
+    if (!linkFeedback) return null;
+    switch (linkFeedback.type) {
+      case 'success':
+        return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'error':
+        return <AlertCircle className="w-5 h-5 text-red-500" />;
+      case 'warning':
+        return <AlertCircle className="w-5 h-5 text-yellow-500" />;
+      default:
+        return <Info className="w-5 h-5 text-blue-500" />;
+    }
+  };
+
+  const getFeedbackColor = () => {
+    if (!linkFeedback) return 'border-gray-300';
+    switch (linkFeedback.type) {
+      case 'success':
+        return 'border-green-500';
+      case 'error':
+        return 'border-red-500';
+      case 'warning':
+        return 'border-yellow-500';
+      default:
+        return 'border-blue-500';
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-blue-100 px-4 py-12">
-      <div className="max-w-md w-full">
+      <div className="max-w-2xl w-full">
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-600 rounded-full mb-4">
@@ -111,7 +177,7 @@ const RegisterPage = () => {
                   value={formData.stationName}
                   onChange={handleChange}
                   className={`input-field pl-10 ${errors.stationName ? 'border-danger-500' : ''}`}
-                  placeholder="Colombo Police Station"
+                  placeholder="Ganemulla police station"
                   required
                 />
               </div>
@@ -136,7 +202,7 @@ const RegisterPage = () => {
                   value={formData.phone}
                   onChange={handleChange}
                   className={`input-field pl-10 ${errors.phone ? 'border-danger-500' : ''}`}
-                  placeholder="0771234567"
+                  placeholder="0714289356"
                   required
                 />
               </div>
@@ -145,7 +211,7 @@ const RegisterPage = () => {
               )}
             </div>
 
-            {/* Google Maps Link */}
+            {/* Google Maps Link with Real-time Validation */}
             <div>
               <label htmlFor="googleMapsLink" className="block text-sm font-medium text-gray-700 mb-2">
                 Google Maps Location Link
@@ -160,24 +226,87 @@ const RegisterPage = () => {
                   type="url"
                   value={formData.googleMapsLink}
                   onChange={handleChange}
-                  className={`input-field pl-10 ${errors.googleMapsLink ? 'border-danger-500' : ''}`}
-                  placeholder="https://maps.google.com/?q=6.9271,79.8612"
+                  className={`input-field pl-10 pr-10 ${getFeedbackColor()} ${errors.googleMapsLink ? 'border-danger-500' : ''}`}
+                  placeholder="https://maps.app.goo.gl/xxxxx"
                   required
                 />
+                {linkFeedback && (
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    {getFeedbackIcon()}
+                  </div>
+                )}
               </div>
+
+              {/* Real-time Feedback */}
+              {linkFeedback && (
+                <div className={`mt-2 p-3 rounded-lg text-sm ${
+                  linkFeedback.type === 'success' ? 'bg-green-50 text-green-800' :
+                  linkFeedback.type === 'error' ? 'bg-red-50 text-red-800' :
+                  linkFeedback.type === 'warning' ? 'bg-yellow-50 text-yellow-800' :
+                  'bg-blue-50 text-blue-800'
+                }`}>
+                  <div className="flex items-start gap-2">
+                    {getFeedbackIcon()}
+                    <span>{linkFeedback.message}</span>
+                  </div>
+                  {linkFeedback.coordinates && (
+                    <div className="mt-2 text-xs font-mono bg-white/50 px-2 py-1 rounded">
+                      Coordinates: {linkFeedback.coordinates.lat}, {linkFeedback.coordinates.lng}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {errors.googleMapsLink && (
                 <p className="mt-1 text-sm text-danger-600">{errors.googleMapsLink}</p>
               )}
-              <p className="mt-2 text-sm text-gray-500">
-                Open Google Maps, find your location, and paste the share link here
-              </p>
+
+              {/* Help Section */}
+              <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-blue-900 mb-2">How to get your Google Maps link:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-blue-800">
+                      <li>Open Google Maps and search for your police station</li>
+                      <li>Click on your station when it appears</li>
+                      <li>Click the <strong>"Share"</strong> button</li>
+                      <li>Copy the link shown and paste it here</li>
+                    </ol>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setShowExamples(!showExamples)}
+                      className="mt-3 text-blue-600 hover:text-blue-800 font-medium underline text-sm"
+                    >
+                      {showExamples ? 'Hide' : 'Show'} example links
+                    </button>
+
+                    {showExamples && (
+                      <div className="mt-3 space-y-2">
+                        <p className="font-medium text-blue-900">Valid link examples:</p>
+                        {exampleLinks.map((link, index) => (
+                          <div
+                            key={index}
+                            className="bg-white rounded px-3 py-2 text-xs font-mono break-all cursor-pointer hover:bg-blue-100 transition-colors"
+                            onClick={() => setFormData(prev => ({ ...prev, googleMapsLink: link }))}
+                            title="Click to use this example"
+                          >
+                            {link}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Register Button */}
             <button
               type="submit"
-              disabled={loading}
-              className="w-full btn-primary py-3"
+              disabled={loading || (linkFeedback && !linkFeedback.isValid)}
+              className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="flex items-center justify-center space-x-2">

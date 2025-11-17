@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Shield, Phone, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -10,7 +10,15 @@ const LoginPage = () => {
   const [error, setError] = useState('');
   
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
+
+  // Auto-redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('Already authenticated, redirecting to dashboard');
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,22 +31,28 @@ const LoginPage = () => {
     }
 
     setLoading(true);
+    console.log('Attempting login with phone:', phone);
+    
     try {
       const success = await login(phone);
+      console.log('Login result:', success);
+      
       if (success) {
-        navigate('/dashboard');
+        // Don't navigate here - let useEffect handle it after state updates
+        console.log('Login successful, waiting for auth state update...');
       } else {
         setError('Login failed. Please check your phone number.');
+        setLoading(false);
       }
     } catch (err) {
+      console.error('Login error:', err);
       setError('An error occurred. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-blue-100 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-blue-100 px-4 py-12">
       <div className="max-w-md w-full">
         {/* Logo and Title */}
         <div className="text-center mb-8">
@@ -54,7 +68,7 @@ const LoginPage = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-6">Station Login</h2>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Phone Number Input */}
+            {/* Phone Number */}
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
                 Phone Number
@@ -65,43 +79,40 @@ const LoginPage = () => {
                 </div>
                 <input
                   id="phone"
+                  name="phone"
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="input-field pl-10"
-                  placeholder="0771234567"
+                  className={`input-field pl-10 ${error ? 'border-danger-500' : ''}`}
+                  placeholder="0714289356"
                   required
-                  autoFocus
+                  disabled={loading}
                 />
               </div>
+              {error && (
+                <p className="mt-1 text-sm text-danger-600">{error}</p>
+              )}
               <p className="mt-2 text-sm text-gray-500">
                 Enter your registered phone number
               </p>
             </div>
 
-            {/* Error Message */}
-            {error && (
-              <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded-lg">
-                <p className="text-sm">{error}</p>
-              </div>
-            )}
-
             {/* Login Button */}
             <button
               type="submit"
               disabled={loading}
-              className="w-full btn-primary flex items-center justify-center space-x-2 py-3"
+              className="w-full btn-primary py-3"
             >
               {loading ? (
-                <>
+                <div className="flex items-center justify-center space-x-2">
                   <div className="spinner w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
                   <span>Logging in...</span>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center justify-center space-x-2">
                   <span>Login</span>
                   <ArrowRight className="w-5 h-5" />
-                </>
+                </div>
               )}
             </button>
           </form>

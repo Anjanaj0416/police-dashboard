@@ -36,37 +36,39 @@ export const formatTime = (dateString) => {
 };
 
 /**
- * Extract coordinates from Google Maps link
+ * Extract coordinates from Google Maps link - IMPROVED VERSION
+ * Supports multiple Google Maps URL formats
  */
 export const extractCoordinatesFromLink = (link) => {
   try {
-    // Pattern 1: https://maps.google.com/?q=LAT,LNG
-    const pattern1 = /[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)/;
-    const match1 = link.match(pattern1);
-    if (match1) {
+    if (!link) return null;
+
+    // Method 1: Check for @ coordinates (most common)
+    // Example: https://www.google.com/maps/place/Police+Station/@7.0675882,79.9597962,17z
+    const atMatch = link.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (atMatch) {
       return {
-        lat: parseFloat(match1[1]),
-        lng: parseFloat(match1[2]),
+        lat: parseFloat(atMatch[1]),
+        lng: parseFloat(atMatch[2]),
       };
     }
 
-    // Pattern 2: https://www.google.com/maps/@LAT,LNG,ZOOMz
-    const pattern2 = /@(-?\d+\.?\d*),(-?\d+\.?\d*),/;
-    const match2 = link.match(pattern2);
-    if (match2) {
+    // Method 2: Check for ?q= parameter
+    // Example: https://maps.google.com/?q=7.0675882,79.9597962
+    const qMatch = link.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (qMatch) {
       return {
-        lat: parseFloat(match2[1]),
-        lng: parseFloat(match2[2]),
+        lat: parseFloat(qMatch[1]),
+        lng: parseFloat(qMatch[2]),
       };
     }
 
-    // Pattern 3: https://www.google.com/maps/place/.../@LAT,LNG
-    const pattern3 = /@(-?\d+\.?\d*),(-?\d+\.?\d*)/;
-    const match3 = link.match(pattern3);
-    if (match3) {
+    // Method 3: Check for /place/ with coordinates
+    const placeMatch = link.match(/\/place\/[^/]+\/@?(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (placeMatch) {
       return {
-        lat: parseFloat(match3[1]),
-        lng: parseFloat(match3[2]),
+        lat: parseFloat(placeMatch[1]),
+        lng: parseFloat(placeMatch[2]),
       };
     }
 
@@ -101,10 +103,83 @@ export const formatPhone = (phone) => {
 };
 
 /**
- * Validate Google Maps link
+ * Validate Google Maps link - IMPROVED VERSION
+ * Now actually checks if coordinates can be extracted
  */
 export const validateGoogleMapsLink = (link) => {
-  return link.includes('google.com/maps') || link.includes('maps.google.com');
+  if (!link) return false;
+  
+  // Check if it's a Google Maps URL
+  const isGoogleMapsUrl = 
+    link.includes('google.com/maps') || 
+    link.includes('maps.google.com') ||
+    link.includes('maps.app.goo.gl') ||
+    link.includes('goo.gl/maps');
+  
+  if (!isGoogleMapsUrl) return false;
+  
+  // Try to extract coordinates
+  const coords = extractCoordinatesFromLink(link);
+  
+  // Return true if coordinates were successfully extracted
+  return coords !== null && coords.lat !== null && coords.lng !== null;
+};
+
+/**
+ * Get validation feedback for Google Maps link
+ * Returns object with isValid boolean and message string
+ */
+export const getGoogleMapsLinkFeedback = (link) => {
+  if (!link || link.trim() === '') {
+    return {
+      isValid: false,
+      type: 'info',
+      message: 'Paste your Google Maps share link here'
+    };
+  }
+
+  // Check if it looks like a Google Maps URL
+  const isGoogleMapsUrl = 
+    link.includes('google.com/maps') || 
+    link.includes('maps.google.com') ||
+    link.includes('maps.app.goo.gl') ||
+    link.includes('goo.gl/maps');
+
+  if (!isGoogleMapsUrl) {
+    return {
+      isValid: false,
+      type: 'error',
+      message: 'This doesn\'t look like a Google Maps link. Please use a link from Google Maps.'
+    };
+  }
+
+  // Try to extract coordinates
+  const coords = extractCoordinatesFromLink(link);
+
+  if (!coords) {
+    return {
+      isValid: false,
+      type: 'warning',
+      message: 'Could not extract coordinates from this link. Make sure it includes location coordinates (like @7.067,79.959).'
+    };
+  }
+
+  // Validate coordinates are in Sri Lanka (approximately)
+  if (coords.lat < 5.9 || coords.lat > 10.0 || coords.lng < 79.0 || coords.lng > 82.0) {
+    return {
+      isValid: false,
+      type: 'warning',
+      message: `Coordinates (${coords.lat}, ${coords.lng}) seem to be outside Sri Lanka. Please verify the location.`
+    };
+  }
+
+  // All checks passed!
+  return {
+    isValid: true,
+    type: 'success',
+    message: `✓ Valid location: ${coords.lat}, ${coords.lng}`,
+    coordinates: coords
+  };
 };
 
 /**
