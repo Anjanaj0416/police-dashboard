@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Navigation, MapPin, Clock } from 'lucide-react';
+import { ArrowLeft, Navigation, MapPin, Clock, Phone } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Map from '../components/Map';
 import Loading from '../components/Loading';
@@ -18,29 +18,124 @@ const MapViewPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log('🔍 MapViewPage - Looking for alert:', alertId);
+    console.log('Available alerts:', alerts);
+    console.log('Station data:', station);
+
     // Find the alert from the alerts context
     const foundAlert = alerts.find((a) => a._id === alertId);
     if (foundAlert) {
+      console.log('✅ Found alert:', foundAlert);
       setAlert(foundAlert);
       setLoading(false);
     } else {
-      // If not found in context, you could fetch it from the API
-      // For now, show an error
+      console.error('❌ Alert not found:', alertId);
       toast.error('Alert not found');
       setLoading(false);
     }
-  }, [alertId, alerts]);
+  }, [alertId, alerts, station]);
 
   const handleGetDirections = () => {
-    if (station && alert) {
-      const directionsUrl = getDirectionsUrl(
-        station.location.lat,
-        station.location.lng,
-        alert.location.lat,
-        alert.location.lng
-      );
-      window.open(directionsUrl, '_blank');
+    console.log('🔍 Get Directions clicked from MapView');
+    console.log('Station:', station);
+    console.log('Alert:', alert);
+
+    if (!station) {
+      console.error('❌ No station data');
+      toast.error('Station information not available');
+      return;
     }
+
+    if (!alert) {
+      console.error('❌ No alert data');
+      toast.error('Alert information not available');
+      return;
+    }
+
+    // ✅ Get station coordinates - support multiple formats
+    let stationLat, stationLng;
+    if (station.location) {
+      stationLat = station.location.lat;
+      stationLng = station.location.lng;
+    } else if (station.lat && station.lng) {
+      stationLat = station.lat;
+      stationLng = station.lng;
+    }
+
+    // ✅ Get alert coordinates - support multiple formats
+    let userLat, userLng;
+    if (alert.location) {
+      userLat = alert.location.lat;
+      userLng = alert.location.lng;
+    } else if (alert.lat && alert.lng) {
+      userLat = alert.lat;
+      userLng = alert.lng;
+    }
+
+    console.log('📍 Extracted coordinates:', {
+      station: { lat: stationLat, lng: stationLng },
+      alert: { lat: userLat, lng: userLng }
+    });
+
+    // Validate all coordinates exist
+    if (!stationLat || !stationLng) {
+      console.error('❌ Station coordinates missing');
+      toast.error('Station location not available');
+      return;
+    }
+
+    if (!userLat || !userLng) {
+      console.error('❌ Alert coordinates missing');
+      toast.error('Alert location not available');
+      return;
+    }
+
+    const directionsUrl = getDirectionsUrl(stationLat, stationLng, userLat, userLng);
+    
+    console.log('✅ Opening Google Maps:', directionsUrl);
+    window.open(directionsUrl, '_blank');
+    toast.success('Opening Google Maps...');
+  };
+
+  // ✅ NEW: Handle phone call
+  const handleCallUser = () => {
+    const phoneNumber = alert?.userPhone || alert?.phone;
+    
+    if (!phoneNumber) {
+      toast.error('User phone number not available');
+      return;
+    }
+
+    console.log('📞 Calling user:', phoneNumber);
+    toast.success(`Calling ${phoneNumber}...`);
+    // Open phone dialer
+    window.location.href = `tel:${phoneNumber}`;
+  };
+
+  // Helper to get alert coordinates
+  const getAlertLocation = () => {
+    if (!alert) return null;
+    
+    if (alert.location) {
+      return { lat: alert.location.lat, lng: alert.location.lng };
+    }
+    if (alert.lat && alert.lng) {
+      return { lat: alert.lat, lng: alert.lng };
+    }
+    return null;
+  };
+
+  // Helper to get station coordinates
+  const getStationLocation = () => {
+    if (!station) return null;
+    
+    if (station.location) {
+      return { lat: station.location.lat, lng: station.location.lng };
+    }
+    if (station.lat && station.lng) {
+      return { lat: station.lat, lng: station.lng };
+    }
+    return null;
   };
 
   if (loading) {
@@ -71,12 +166,17 @@ const MapViewPage = () => {
     );
   }
 
-  const distance = station
+  const alertLocation = getAlertLocation();
+  const stationLocation = getStationLocation();
+  const userPhone = alert.userPhone || alert.phone;
+  
+  // Calculate distance if we have both locations
+  const distance = stationLocation && alertLocation
     ? calculateDistance(
-        station.location.lat,
-        station.location.lng,
-        alert.location.lat,
-        alert.location.lng
+        stationLocation.lat,
+        stationLocation.lng,
+        alertLocation.lat,
+        alertLocation.lng
       )
     : null;
 
@@ -125,37 +225,76 @@ const MapViewPage = () => {
               <p className="text-lg font-medium text-gray-900">Police Assistance</p>
             </div>
 
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Emergency Location</h3>
-              <p className="text-sm text-gray-900 font-mono">
-                Lat: {alert.location.lat.toFixed(6)}
-                <br />
-                Lng: {alert.location.lng.toFixed(6)}
-              </p>
-            </div>
+            {alertLocation ? (
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Emergency Location</h3>
+                <p className="text-sm text-gray-900 font-mono">
+                  Lat: {alertLocation.lat.toFixed(6)}
+                  <br />
+                  Lng: {alertLocation.lng.toFixed(6)}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+                <h3 className="text-sm font-semibold text-red-700 mb-2">⚠️ Location Error</h3>
+                <p className="text-sm text-red-600">
+                  Emergency location coordinates are missing from this alert.
+                </p>
+              </div>
+            )}
 
-            {station && (
+            {/* ✅ NEW: Caller Contact Info */}
+            {userPhone && (
+              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <h3 className="text-sm font-semibold text-blue-700 mb-3">Caller Information</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-gray-600 mb-1">Phone Number</p>
+                    <p className="text-lg text-gray-900 font-mono font-semibold">{userPhone}</p>
+                  </div>
+                  <button
+                    onClick={handleCallUser}
+                    className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-colors"
+                  >
+                    <Phone className="w-5 h-5" />
+                    <span>Call Caller</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {station && stationLocation ? (
               <>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h3 className="text-sm font-semibold text-gray-700 mb-2">Your Station</h3>
                   <p className="text-sm text-gray-900">{station.stationName}</p>
                   <p className="text-xs text-gray-600 mt-1 font-mono">
-                    Lat: {station.location.lat.toFixed(6)}
+                    Lat: {stationLocation.lat.toFixed(6)}
                     <br />
-                    Lng: {station.location.lng.toFixed(6)}
+                    Lng: {stationLocation.lng.toFixed(6)}
                   </p>
                 </div>
 
-                <div className="bg-primary-50 rounded-lg p-4">
-                  <h3 className="text-sm font-semibold text-primary-700 mb-2">
-                    Distance to Alert
-                  </h3>
-                  <p className="text-2xl font-bold text-primary-900">{distance} km</p>
-                </div>
+                {distance && (
+                  <div className="bg-primary-50 rounded-lg p-4">
+                    <h3 className="text-sm font-semibold text-primary-700 mb-2">
+                      Distance to Alert
+                    </h3>
+                    <p className="text-2xl font-bold text-primary-900">{distance} km</p>
+                  </div>
+                )}
               </>
+            ) : (
+              <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                <h3 className="text-sm font-semibold text-yellow-700 mb-2">⚠️ Station Info</h3>
+                <p className="text-sm text-yellow-600">
+                  Station location not available. Please update your profile.
+                </p>
+              </div>
             )}
 
-            {alert.userId && (
+            {/* User ID (fallback if no phone) */}
+            {alert.userId && !userPhone && (
               <div className="bg-gray-50 rounded-lg p-4">
                 <h3 className="text-sm font-semibold text-gray-700 mb-2">User ID</h3>
                 <p className="text-sm text-gray-900 font-mono">{alert.userId}</p>
@@ -166,7 +305,12 @@ const MapViewPage = () => {
           {/* Action Button */}
           <button
             onClick={handleGetDirections}
-            className="w-full flex items-center justify-center space-x-2 bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-lg transition-colors"
+            disabled={!alertLocation || !stationLocation}
+            className={`w-full flex items-center justify-center space-x-2 font-medium py-3 rounded-lg transition-colors ${
+              alertLocation && stationLocation
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
           >
             <Navigation className="w-5 h-5" />
             <span>Navigate to Location</span>
@@ -181,11 +325,11 @@ const MapViewPage = () => {
           </div>
         </div>
 
-        {/* Map Container */}
-        <div className="flex-1 h-[400px] lg:h-auto">
+        {/* Map View */}
+        <div className="flex-1 h-96 lg:h-auto">
           <Map
-            stationLocation={station?.location}
-            alertLocation={alert.location}
+            stationLocation={stationLocation}
+            alertLocation={alertLocation}
             onGetDirections={handleGetDirections}
           />
         </div>
