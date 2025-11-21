@@ -91,13 +91,23 @@ export const updateFCMToken = async (stationId, fcmToken) => {
 };
 
 /**
- * Get all alerts for the station
+ * ✅ FIXED: Get POLICE alerts for THIS SPECIFIC station only
  */
 export const getAlerts = async () => {
-  const response = await api.get(API_ENDPOINTS.ALERTS);
+  // Get the logged-in station's data
+  const stationData = localStorage.getItem(STORAGE_KEYS.STATION_DATA);
+  
+  if (!stationData) {
+    throw new Error('Station data not found. Please log in again.');
+  }
+  
+  const station = JSON.parse(stationData);
+  const stationId = station.id;
+  
+  // ✅ CRITICAL FIX: Filter alerts by this station's ID to only get alerts assigned to THIS station
+  const response = await api.get(`/alerts/station/${stationId}?type=police`);
   return response.data;
 };
-
 /**
  * Get alert by ID
  */
